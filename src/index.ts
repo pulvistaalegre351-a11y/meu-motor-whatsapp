@@ -14,6 +14,11 @@ const supabase = createClient(process.env.SUPABASE_URL!, process.env.SUPABASE_SE
 app.use(cors());
 app.use(express.json());
 
+// Root route for uptime monitoring (UptimeRobot)
+app.get('/', (req, res) => {
+    res.send('WhatsApp Engine OK');
+});
+
 // Auto-start active sessions on boot
 async function initSessions() {
     console.log('Initializing sessions from database...');
