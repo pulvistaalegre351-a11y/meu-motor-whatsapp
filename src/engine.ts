@@ -10,7 +10,7 @@ dotenv.config();
 
 const SUPABASE_URL = process.env.SUPABASE_URL!;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const VERCEL_WEBHOOK_URL = process.env.VERCEL_WEBHOOK_URL!; // e.g. https://chatbot-project-inky-nine.vercel.app/api/public/qr/webhook
+const VERCEL_WEBHOOK_URL = process.env.VERCEL_WEBHOOK_URL || 'https://chatbot-project-inky-nine.vercel.app/api/public/qr/webhook';
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 const logger = pino({ level: 'silent' });
