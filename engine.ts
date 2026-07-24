@@ -1,4 +1,4 @@
-import makeWASocket, { DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion } from '@whiskeysockets/baileys';
+import makeWASocket, { DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion, downloadMediaMessage } from '@whiskeysockets/baileys';
 import { Boom } from '@hapi/boom';
 import pino from 'pino';
 import { useSupabaseAuthState } from './supabase-auth';
@@ -95,25 +95,57 @@ export async function startSession(sessionId: string) {
             if (!msg.message) continue;
 
             const from = msg.key.remoteJid;
-            const text = msg.message.conversation || msg.message.extendedTextMessage?.text;
+            let text = msg.message.conversation || msg.message.extendedTextMessage?.text || '';
+            let audioBase64 = null;
 
-            console.log(`Processing message from ${from}: ${text} (fromMe: ${msg.key.fromMe})`);
+            if (msg.message.audioMessage) {
+                console.log(`Detected audio message from ${from}`);
+                try {
+                    const buffer = await downloadMediaMessage(
+                        msg,
+                        'buffer',
+                        { },
+                        { logger, reuploadRequest: sock.updateMediaMessage }
+                    );
+                    audioBase64 = buffer.toString('base64');
+                    text = "[Áudio Recebido]"; // Placeholder
+                } catch (err: any) {
+                    console.error("Failed to download audio message", err.message);
+                }
+            }
 
-            if (text && from && !from.includes('@g.us')) { // Ignore groups
+            console.log(`Processing message from ${from}: ${text.substring(0, 50)}... (fromMe: ${msg.key.fromMe})`);
+
+            if ((text || audioBase64) && from && !from.includes('@g.us')) { // Ignore groups
                 try {
                     // Send message to Vercel webhook
                     console.log(`Forwarding to Vercel: ${VERCEL_WEBHOOK_URL}`);
+                    
+                    // AVISA O CLIENTE IMEDIATAMENTE QUE O ROBÔ ESTÁ "DIGITANDO..." (ou "GRAVANDO ÁUDIO...")
+                    await sock.sendPresenceUpdate(audioBase64 ? 'recording' : 'composing', from);
+                    
                     const res = await axios.post(VERCEL_WEBHOOK_URL, {
                         sessionId,
                         from,
                         text,
-                        fromMe: msg.key.fromMe
+                        fromMe: msg.key.fromMe,
+                        audioBase64
                     });
 
                     console.log(`Vercel responded with status ${res.status}`);
-                    if (res.data && res.data.reply) {
-                        console.log(`Sending reply to ${from}: ${res.data.reply.substring(0, 50)}...`);
-                        await sock.sendMessage(from, { text: res.data.reply });
+                    if (res.data) {
+                        if (res.data.replyAudioBase64) {
+                            console.log(`Sending audio reply to ${from}...`);
+                            const audioBuffer = Buffer.from(res.data.replyAudioBase64, 'base64');
+                            await sock.sendMessage(from, { 
+                                audio: audioBuffer, 
+                                mimetype: 'audio/ogg; codecs=opus', 
+                                ptt: true 
+                            });
+                        } else if (res.data.reply) {
+                            console.log(`Sending text reply to ${from}: ${res.data.reply.substring(0, 50)}...`);
+                            await sock.sendMessage(from, { text: res.data.reply });
+                        }
                     } else {
                         console.log(`No reply content in Vercel response.`);
                     }
